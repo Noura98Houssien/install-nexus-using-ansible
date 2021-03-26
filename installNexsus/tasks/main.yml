@@ -1,0 +1,102 @@
+---
+# tasks file for installNexsus
+- name: Install all the available updates
+  yum:
+    name: "*"
+    state: latest
+
+
+- name: Install OpenJDK 1.8
+  yum:
+    name: java-1.8.0-openjdk.x86_64
+    state: present
+
+- name: Create a directory app
+  ansible.builtin.file:
+    path: /app
+    state: directory
+    mode: '0755'
+
+- name: Change dir to /app
+  command: "cd /app"
+
+
+- name: Download the latest nexus
+  get_url:
+    url: https://download.sonatype.com/nexus/3/nexus-3.30.0-01-unix.tar.gz
+    dest: /app/nexus.tar.gz
+    force_basic_auth: yes
+
+- name: Extract nexus.tar.gz into /app
+  ansible.builtin.unarchive:
+    src: /app/nexus.tar.gz
+    dest: /app
+    remote_src: yes
+
+- name: Rename Extracted dir to nexus
+  command: 'mv /app/nexus-3.30.0-01 /app/nexus'
+
+- name: Add the user 'nexus' 
+  ansible.builtin.user:
+    name: nexus
+    comment: nexus user
+
+- name: Change the ownership of nexus files to nexus user.
+  ansible.builtin.file:
+    path: /app/nexus
+    owner: nexus
+    group: nexus
+    recurse: yes
+
+- name: Change the ownership of nexus data directory to nexus user.
+  ansible.builtin.file:
+    path: /app/sonatype-work
+    owner: nexus
+    group: nexus
+    recurse: yes
+
+- name: Open /app/nexus/bin/nexus.rc file
+  lineinfile:
+    path: /app/nexus/bin/nexus.rc
+    regexp: '^run_as_user='
+    line: 'run_as_user="nexus"'
+
+- name: Create a nexus systemd unit file
+  copy:
+    dest: "/etc/systemd/system/nexus.service"
+    content: |
+      [Unit]
+      Description=nexus service
+      After=network.target
+
+      [Service]
+      Type=forking
+      LimitNOFILE=65536
+      User=nexus
+      Group=nexus
+      ExecStart=/app/nexus/bin/nexus start
+      ExecStop=/app/nexus/bin/nexus stop
+      User=nexus
+      Restart=on-abort
+
+      [Install]
+      WantedBy=multi-user.target
+
+# - name: Create a symbolic link
+#   ansible.builtin.file:
+
+#     src: /etc/systemd/system/nexus.service
+#     dest: /etc/systemd/system/multi-user.target.wants/nexus.service
+#     owner: root
+#     group: root
+#     state: link
+
+
+
+# - name: Start the Nexus service
+#   ansible.builtin.systemd:
+#     enabled: True
+#     state: started
+#     name: nexus
+- name: run nexus
+  command: '/app/nexus/bin/nexus run'
